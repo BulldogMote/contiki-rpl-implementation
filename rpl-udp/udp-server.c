@@ -32,14 +32,15 @@
 #include "net/netstack.h"
 #include "net/ipv6/simple-udp.h"
 #include "dev/sht11/sht11-sensor.h"
+#include <msp430.h>
 
 #include "sys/log.h"
 #define LOG_MODULE "App"
 #define LOG_LEVEL LOG_LEVEL_INFO
 
 #define WITH_SERVER_REPLY  1
-#define UDP_CLIENT_PORT	8765
-#define UDP_SERVER_PORT	5678
+#define UDP_CLIENT_PORT	8900
+#define UDP_SERVER_PORT	5800
 
 static struct simple_udp_connection udp_conn;
 
@@ -72,6 +73,7 @@ udp_rx_callback(struct simple_udp_connection *c,
 /*---------------------------------------------------------------------------*/
 PROCESS_THREAD(udp_server_process, ev, data)
 {
+  P5DIR |= 0x32;
   PROCESS_BEGIN();
 
   /* Initialize DAG root */
