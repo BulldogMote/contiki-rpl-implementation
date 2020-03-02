@@ -65,6 +65,7 @@ PROCESS_THREAD(udp_client_process, ev, data)
 {
   static struct etimer periodic_timer;
   static char str[32];
+  static uint8_t has_connected = 0;
   uip_ipaddr_t dest_ipaddr;
 
   P5DIR |= 0x70;
@@ -81,7 +82,7 @@ PROCESS_THREAD(udp_client_process, ev, data)
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&periodic_timer));
 
     
-    if(NETSTACK_ROUTING.node_is_reachable() && NETSTACK_ROUTING.get_root_ipaddr(&dest_ipaddr)) {
+    if(NETSTACK_ROUTING.node_is_reachable() && NETSTACK_ROUTING.get_root_ipaddr(&dest_ipaddr) && has_connected == 0) {
       P5OUT &= ~(1<<4);
       /* Send to DAG root */
       LOG_INFO("Sending SYN to ");
@@ -91,10 +92,11 @@ PROCESS_THREAD(udp_client_process, ev, data)
       simple_udp_sendto(&udp_conn, str, strlen(str), &dest_ipaddr);
       LOG_INFO("Going to sleep  ");
       P5OUT |= (1<<4);
+      has_connected = 1;
       LPM_SLEEP();
-      break;
     } else {
       LOG_INFO("Not reachable yet\n");
+      has_connected = 0;
     }
 
     /* Add some jitter */

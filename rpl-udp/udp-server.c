@@ -41,7 +41,6 @@
 #define LOG_MODULE "App"
 #define LOG_LEVEL LOG_LEVEL_INFO
 
-#define WITH_SERVER_REPLY  1
 #define UDP_CLIENT_PORT	8800	// 8765
 #define UDP_SERVER_PORT	5700	// 5678
 
@@ -50,11 +49,6 @@ static const uip_ipaddr_t* leaf_address;
 
 PROCESS(udp_server_process, "UDP server");
 AUTOSTART_PROCESSES(&udp_server_process);
-
-// This was in the github originally
-//int get_temperature(){
- // return ((sht11_sensor.value(SHT11_SENSOR_TEMP)/10)-396)/10;
-}
 
 /*---------------------------------------------------------------------------*/
 static void
@@ -65,42 +59,24 @@ udp_rx_callback(struct simple_udp_connection *c,
          uint16_t receiver_port,
          const uint8_t *data,
          uint16_t datalen)
-{
+{ 
 
-static struct etimer periodic_timer;
-
-  LOG_INFO("Received request '%.*s' from ", datalen, (char *) data);
+  LOG_INFO("Received '%.*s' from ", datalen, (char *) data);
   LOG_INFO_6ADDR(sender_addr);
   LOG_INFO_("\n");
 
   char syn[] = "SYN";
-  char ack[] = "ACK";
 
-  if(strcmp((char *)data,syn) ==0){
-	leaf_address = sender_addr;
-	LOG_INFO("Received SYN\n");
-	etimer_set(&periodic_timer, (5* CLOCK_SECOND));
-//	LPM_AWAKE();
-  	LOG_INFO("Sending response.\n");
-	simple_udp_sendto(&udp_conn, (char *) ack, datalen, sender_addr);
+  if(strcmp((char *)data,syn) == 0){
+	  leaf_address = sender_addr;
 	}
-  else{
-#if WITH_SERVER_REPLY
-  /* send back the same string to the client as an echo reply */
-  LOG_INFO("NOT GOING TO SLEEP...\n");
-  // LPM_SLEEP();
- 	
-  etimer_set(&periodic_timer, (20* CLOCK_SECOND)); // Not sure if timer works
-  //	LPM_AWAKE();
-  LOG_INFO("Sending response.\n");
-  simple_udp_sendto(&udp_conn, (char *) ack, datalen, sender_addr);
-#endif /* WITH_SERVER_REPLY */
-}
 }
 /*---------------------------------------------------------------------------*/
 PROCESS_THREAD(udp_server_process, ev, data)
 {
  // P5DIR |= 0x32;
+ char ack[] = "ACK";
+ static struct etimer periodic_timer;
   PROCESS_BEGIN();
   lpm_on();
   /* Initialize DAG root */
@@ -110,7 +86,12 @@ PROCESS_THREAD(udp_server_process, ev, data)
   simple_udp_register(&udp_conn, UDP_SERVER_PORT, NULL,
                       UDP_CLIENT_PORT, udp_rx_callback);
 
- // LOG_INFO("Temperature: %u\n", get_temperature());
+  while(1){
+    if(leaf_address != NULL){
+      simple_udp_sendto(&udp_conn, (char *) ack, strlen(ack), leaf_address);
+    }
+    etimer_set(&periodic_timer, (5* CLOCK_SECOND));
+  }
 
   PROCESS_END();
 }
