@@ -32,7 +32,6 @@
 #include "net/netstack.h"
 #include "net/ipv6/simple-udp.h"
 #include "string.h"
-#include "dev/sht11/sht11-sensor.h"
 #include <msp430.h>
 
 #include "dev/lpm.h"
@@ -50,11 +49,6 @@ static const uip_ipaddr_t* leaf_address;
 
 PROCESS(udp_server_process, "UDP server");
 AUTOSTART_PROCESSES(&udp_server_process);
-
-// This was in the github originally
-//int get_temperature(){
- // return ((sht11_sensor.value(SHT11_SENSOR_TEMP)/10)-396)/10;
-}
 
 /*---------------------------------------------------------------------------*/
 static void
@@ -109,8 +103,6 @@ PROCESS_THREAD(udp_server_process, ev, data)
   /* Initialize UDP connection */
   simple_udp_register(&udp_conn, UDP_SERVER_PORT, NULL,
                       UDP_CLIENT_PORT, udp_rx_callback);
-
- // LOG_INFO("Temperature: %u\n", get_temperature());
 
   PROCESS_END();
 }
