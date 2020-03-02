@@ -31,24 +31,29 @@
 #include "net/routing/routing.h"
 #include "net/netstack.h"
 #include "net/ipv6/simple-udp.h"
+#include "string.h"
 #include "dev/sht11/sht11-sensor.h"
 #include <msp430.h>
+
+#include "dev/lpm.h"
 
 #include "sys/log.h"
 #define LOG_MODULE "App"
 #define LOG_LEVEL LOG_LEVEL_INFO
 
 #define WITH_SERVER_REPLY  1
-#define UDP_CLIENT_PORT	8900
-#define UDP_SERVER_PORT	5800
+#define UDP_CLIENT_PORT	8800	// 8765
+#define UDP_SERVER_PORT	5700	// 5678
 
 static struct simple_udp_connection udp_conn;
+static const uip_ipaddr_t* leaf_address;
 
 PROCESS(udp_server_process, "UDP server");
 AUTOSTART_PROCESSES(&udp_server_process);
 
-int get_temperature(){
-  return ((sht11_sensor.value(SHT11_SENSOR_TEMP)/10)-396)/10;
+// This was in the github originally
+//int get_temperature(){
+ // return ((sht11_sensor.value(SHT11_SENSOR_TEMP)/10)-396)/10;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -61,21 +66,43 @@ udp_rx_callback(struct simple_udp_connection *c,
          const uint8_t *data,
          uint16_t datalen)
 {
+
+static struct etimer periodic_timer;
+
   LOG_INFO("Received request '%.*s' from ", datalen, (char *) data);
   LOG_INFO_6ADDR(sender_addr);
   LOG_INFO_("\n");
+
+  char syn[] = "SYN";
+  char ack[] = "ACK";
+
+  if(strcmp((char *)data,syn) ==0){
+	leaf_address = sender_addr;
+	LOG_INFO("Received SYN\n");
+	etimer_set(&periodic_timer, (5* CLOCK_SECOND));
+//	LPM_AWAKE();
+  	LOG_INFO("Sending response.\n");
+	simple_udp_sendto(&udp_conn, (char *) ack, datalen, sender_addr);
+	}
+  else{
 #if WITH_SERVER_REPLY
   /* send back the same string to the client as an echo reply */
+  LOG_INFO("NOT GOING TO SLEEP...\n");
+  // LPM_SLEEP();
+ 	
+  etimer_set(&periodic_timer, (20* CLOCK_SECOND)); // Not sure if timer works
+  //	LPM_AWAKE();
   LOG_INFO("Sending response.\n");
-  simple_udp_sendto(&udp_conn, data, datalen, sender_addr);
+  simple_udp_sendto(&udp_conn, (char *) ack, datalen, sender_addr);
 #endif /* WITH_SERVER_REPLY */
+}
 }
 /*---------------------------------------------------------------------------*/
 PROCESS_THREAD(udp_server_process, ev, data)
 {
-  P5DIR |= 0x32;
+ // P5DIR |= 0x32;
   PROCESS_BEGIN();
-
+  lpm_on();
   /* Initialize DAG root */
   NETSTACK_ROUTING.root_start();
 
@@ -83,7 +110,7 @@ PROCESS_THREAD(udp_server_process, ev, data)
   simple_udp_register(&udp_conn, UDP_SERVER_PORT, NULL,
                       UDP_CLIENT_PORT, udp_rx_callback);
 
-  LOG_INFO("Temperature: %u\n", get_temperature());
+ // LOG_INFO("Temperature: %u\n", get_temperature());
 
   PROCESS_END();
 }
