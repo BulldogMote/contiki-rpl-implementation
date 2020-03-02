@@ -32,6 +32,7 @@
 #include "net/netstack.h"
 #include "net/ipv6/simple-udp.h"
 #include "string.h"
+#include "random.h"
 #include "dev/sht11/sht11-sensor.h"
 #include <msp430.h>
 
@@ -43,6 +44,8 @@
 
 #define UDP_CLIENT_PORT	8800	// 8765
 #define UDP_SERVER_PORT	5700	// 5678
+
+#define SEND_INTERVAL		  (5 * CLOCK_SECOND)
 
 static struct simple_udp_connection udp_conn;
 static const uip_ipaddr_t* leaf_address;
@@ -75,7 +78,7 @@ udp_rx_callback(struct simple_udp_connection *c,
 PROCESS_THREAD(udp_server_process, ev, data)
 {
  // P5DIR |= 0x32;
- char ack[] = "ACK";
+ char req[] = "REQ";
  static struct etimer periodic_timer;
   PROCESS_BEGIN();
   lpm_on();
@@ -86,11 +89,18 @@ PROCESS_THREAD(udp_server_process, ev, data)
   simple_udp_register(&udp_conn, UDP_SERVER_PORT, NULL,
                       UDP_CLIENT_PORT, udp_rx_callback);
 
+  etimer_set(&periodic_timer, random_rand() % SEND_INTERVAL);
+
   while(1){
+    PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&periodic_timer));
     if(leaf_address != NULL){
-      simple_udp_sendto(&udp_conn, (char *) ack, strlen(ack), leaf_address);
+      LOG_INFO("Sending '%.*s' to ", strlen(req), (char *) req);
+      LOG_INFO_6ADDR(leaf_address);
+      LOG_INFO_("\n");
+      simple_udp_sendto(&udp_conn, (char *) req, strlen(req), leaf_address);
     }
-    etimer_set(&periodic_timer, (5* CLOCK_SECOND));
+    etimer_set(&periodic_timer, SEND_INTERVAL
+      - CLOCK_SECOND + (random_rand() % (150 * CLOCK_SECOND)));
   }
 
   PROCESS_END();
