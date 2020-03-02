@@ -32,6 +32,8 @@
 #include "net/netstack.h"
 #include "net/ipv6/simple-udp.h"
 #include "string.h"
+#include "random.h"
+#include "dev/sht11/sht11-sensor.h"
 #include <msp430.h>
 
 #include "dev/lpm.h"
@@ -40,9 +42,10 @@
 #define LOG_MODULE "App"
 #define LOG_LEVEL LOG_LEVEL_INFO
 
-#define WITH_SERVER_REPLY  1
 #define UDP_CLIENT_PORT	8800	// 8765
 #define UDP_SERVER_PORT	5700	// 5678
+
+#define SEND_INTERVAL		  (5 * CLOCK_SECOND)
 
 static struct simple_udp_connection udp_conn;
 static const uip_ipaddr_t* leaf_address;
@@ -59,42 +62,24 @@ udp_rx_callback(struct simple_udp_connection *c,
          uint16_t receiver_port,
          const uint8_t *data,
          uint16_t datalen)
-{
+{ 
 
-static struct etimer periodic_timer;
-
-  LOG_INFO("Received request '%.*s' from ", datalen, (char *) data);
+  LOG_INFO("Received '%.*s' from ", datalen, (char *) data);
   LOG_INFO_6ADDR(sender_addr);
   LOG_INFO_("\n");
 
   char syn[] = "SYN";
-  char ack[] = "ACK";
 
-  if(strcmp((char *)data,syn) ==0){
-	leaf_address = sender_addr;
-	LOG_INFO("Received SYN\n");
-	etimer_set(&periodic_timer, (5* CLOCK_SECOND));
-//	LPM_AWAKE();
-  	LOG_INFO("Sending response.\n");
-	simple_udp_sendto(&udp_conn, (char *) ack, datalen, sender_addr);
+  if(strcmp((char *)data,syn) == 0){
+	  leaf_address = sender_addr;
 	}
-  else{
-#if WITH_SERVER_REPLY
-  /* send back the same string to the client as an echo reply */
-  LOG_INFO("NOT GOING TO SLEEP...\n");
-  // LPM_SLEEP();
- 	
-  etimer_set(&periodic_timer, (20* CLOCK_SECOND)); // Not sure if timer works
-  //	LPM_AWAKE();
-  LOG_INFO("Sending response.\n");
-  simple_udp_sendto(&udp_conn, (char *) ack, datalen, sender_addr);
-#endif /* WITH_SERVER_REPLY */
-}
 }
 /*---------------------------------------------------------------------------*/
 PROCESS_THREAD(udp_server_process, ev, data)
 {
  // P5DIR |= 0x32;
+ char req[] = "REQ";
+ static struct etimer periodic_timer;
   PROCESS_BEGIN();
   lpm_on();
   /* Initialize DAG root */
@@ -104,6 +89,23 @@ PROCESS_THREAD(udp_server_process, ev, data)
   simple_udp_register(&udp_conn, UDP_SERVER_PORT, NULL,
                       UDP_CLIENT_PORT, udp_rx_callback);
 
+<<<<<<< HEAD
+=======
+  etimer_set(&periodic_timer, random_rand() % SEND_INTERVAL);
+
+  while(1){
+    PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&periodic_timer));
+    if(leaf_address != NULL){
+      LOG_INFO("Sending '%.*s' to ", strlen(req), (char *) req);
+      LOG_INFO_6ADDR(leaf_address);
+      LOG_INFO_("\n");
+      simple_udp_sendto(&udp_conn, (char *) req, strlen(req), leaf_address);
+    }
+    etimer_set(&periodic_timer, SEND_INTERVAL
+      - CLOCK_SECOND + (random_rand() % (150 * CLOCK_SECOND)));
+  }
+
+>>>>>>> server-schedule
   PROCESS_END();
 }
 /*---------------------------------------------------------------------------*/

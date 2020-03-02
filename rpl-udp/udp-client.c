@@ -28,6 +28,7 @@ static struct simple_udp_connection udp_conn;
 
 /*---------------------------------------------------------------------------*/
 PROCESS(udp_client_process, "UDP client");
+PROCESS(udp_client_sleep, "UDP client data");
 AUTOSTART_PROCESSES(&udp_client_process);
 /*---------------------------------------------------------------------------*/
 static void
@@ -41,23 +42,18 @@ udp_rx_callback(struct simple_udp_connection *c,
 {
   P5OUT &= ~(1<<5);
   static char str[32];
-
-  LOG_INFO_("\n");
   LOG_INFO("Received '%.*s' from ", datalen, (char *) data);
   LOG_INFO_6ADDR(sender_addr);
   LOG_INFO_("\n");
   LOG_INFO("Sending Temperature: %u\n", get_temperature());
   snprintf(str, sizeof(str), "%u", get_temperature());
   simple_udp_sendto(&udp_conn, str, strlen(str), sender_addr);
-  LOG_INFO("Going to sleep  ");
   P5OUT |= (1<<5);
-  LPM_SLEEP();
-
+  process_start(&udp_client_sleep, NULL);
 
 #if LLSEC802154_CONF_ENABLED
   LOG_INFO_(" LLSEC LV:%d", uipbuf_get_attr(UIPBUF_ATTR_LLSEC_LEVEL));
 #endif
-  LOG_INFO_("\n");
 
 }
 /*---------------------------------------------------------------------------*/
@@ -79,8 +75,6 @@ PROCESS_THREAD(udp_client_process, ev, data)
   lpm_on();
   while(1) {
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&periodic_timer));
-
-    
     if(NETSTACK_ROUTING.node_is_reachable() && NETSTACK_ROUTING.get_root_ipaddr(&dest_ipaddr)) {
       P5OUT &= ~(1<<4);
       /* Send to DAG root */
@@ -89,9 +83,8 @@ PROCESS_THREAD(udp_client_process, ev, data)
       LOG_INFO_("\n");
       snprintf(str, sizeof(str), "SYN");
       simple_udp_sendto(&udp_conn, str, strlen(str), &dest_ipaddr);
-      LOG_INFO("Going to sleep  ");
       P5OUT |= (1<<4);
-      LPM_SLEEP();
+      process_start(&udp_client_sleep, NULL);
       break;
     } else {
       LOG_INFO("Not reachable yet\n");
@@ -105,3 +98,13 @@ PROCESS_THREAD(udp_client_process, ev, data)
   PROCESS_END();
 }
 /*---------------------------------------------------------------------------*/
+PROCESS_THREAD(udp_client_sleep, ev, data)
+{
+  static struct etimer periodic_timer;
+  etimer_set(&periodic_timer, 5 * CLOCK_SECOND);
+  PROCESS_BEGIN();
+    LOG_INFO("Going to sleep\n");
+    PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&periodic_timer));
+    LPM_SLEEP();
+  PROCESS_END();
+}
