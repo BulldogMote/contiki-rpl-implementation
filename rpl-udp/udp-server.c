@@ -35,6 +35,7 @@
 #include "random.h"
 #include "dev/sht11/sht11-sensor.h"
 #include <msp430.h>
+#include <stdlib.h>
 
 #include "dev/lpm.h"
 
@@ -45,10 +46,12 @@
 #define UDP_CLIENT_PORT	8800	// 8765
 #define UDP_SERVER_PORT	5700	// 5678
 
-#define SEND_INTERVAL		  (5 * CLOCK_SECOND)
+#define SEND_INTERVAL		  (1 * CLOCK_SECOND)
+#define ATTEMPTS 5
 
 static struct simple_udp_connection udp_conn;
-static const uip_ipaddr_t* leaf_address;
+uip_ipaddr_t* leaf_address;
+uint8_t rec_data = 0;
 
 PROCESS(udp_server_process, "UDP server");
 AUTOSTART_PROCESSES(&udp_server_process);
@@ -71,15 +74,28 @@ udp_rx_callback(struct simple_udp_connection *c,
   char syn[] = "SYN";
 
   if(strcmp((char *)data,syn) == 0){
-	  leaf_address = sender_addr;
-	}
+	  *leaf_address = *sender_addr;
+    LOG_INFO_("Set leaf to sender: ");
+    LOG_INFO_6ADDR(leaf_address);
+    LOG_INFO_("\n");
+	}else{
+    rec_data = 1;
+  }
 }
 /*---------------------------------------------------------------------------*/
 PROCESS_THREAD(udp_server_process, ev, data)
 {
  // P5DIR |= 0x32;
  char req[] = "REQ";
+ int i = 0;
  static struct etimer periodic_timer;
+ uip_ipaddr_t zero_addr;
+ uip_ip6addr(&zero_addr, 0, 0, 0, 0, 0, 0, 0, 0);
+ leaf_address = (uip_ipaddr_t*) malloc(1 * sizeof(uip_ipaddr_t));
+ uip_ip6addr(leaf_address, 0, 0, 0, 0, 0, 0, 0, 0);
+ LOG_INFO_("Initial: ");
+  LOG_INFO_6ADDR(leaf_address);
+  LOG_INFO_("\n");
   PROCESS_BEGIN();
   lpm_on();
   /* Initialize DAG root */
@@ -89,23 +105,33 @@ PROCESS_THREAD(udp_server_process, ev, data)
   simple_udp_register(&udp_conn, UDP_SERVER_PORT, NULL,
                       UDP_CLIENT_PORT, udp_rx_callback);
 
-<<<<<<< HEAD
-=======
   etimer_set(&periodic_timer, random_rand() % SEND_INTERVAL);
-
   while(1){
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&periodic_timer));
-    if(leaf_address != NULL){
-      LOG_INFO("Sending '%.*s' to ", strlen(req), (char *) req);
-      LOG_INFO_6ADDR(leaf_address);
-      LOG_INFO_("\n");
-      simple_udp_sendto(&udp_conn, (char *) req, strlen(req), leaf_address);
+    LOG_INFO_("Before comparing to zero: ");
+    LOG_INFO_6ADDR(leaf_address);
+    LOG_INFO_("\n");
+    if(!uip_ip6addr_cmp(leaf_address, &zero_addr)){
+      for(i = 0; i < ATTEMPTS; i++){
+        if(rec_data == 1) break;
+        LOG_INFO("Sending '%.*s' to ", strlen(req), (char *) req);
+        LOG_INFO_6ADDR(leaf_address);
+        LOG_INFO_("\n");
+        simple_udp_sendto(&udp_conn, (char *) req, strlen(req), leaf_address);
+        etimer_set(&periodic_timer, SEND_INTERVAL + (random_rand() % (5 * CLOCK_SECOND)));
+        PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&periodic_timer));
+      }
+      if(rec_data == 0){
+        *leaf_address = zero_addr;
+        LOG_INFO_("Set leaf to zero: ");
+        LOG_INFO_6ADDR(leaf_address);
+        LOG_INFO_("\n");
+      }
+      rec_data = 0;
     }
-    etimer_set(&periodic_timer, SEND_INTERVAL
-      - CLOCK_SECOND + (random_rand() % (150 * CLOCK_SECOND)));
+    etimer_set(&periodic_timer, 20 * CLOCK_SECOND  + (random_rand() % (1 * CLOCK_SECOND)));
   }
 
->>>>>>> server-schedule
   PROCESS_END();
 }
 /*---------------------------------------------------------------------------*/
