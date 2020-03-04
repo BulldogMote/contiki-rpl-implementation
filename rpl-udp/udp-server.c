@@ -50,11 +50,17 @@
 #define ATTEMPTS 5
 
 static struct simple_udp_connection udp_conn;
-uip_ipaddr_t* leaf_address;
+uip_ipaddr_t* sink_addrs;
+uint8_t sink_addrs_len;
 uint8_t rec_data = 0;
+uint8_t i;
 
 PROCESS(udp_server_process, "UDP server");
 AUTOSTART_PROCESSES(&udp_server_process);
+
+void add_sink(uip_ipaddr_t sink){
+
+}
 
 /*---------------------------------------------------------------------------*/
 static void
@@ -72,13 +78,15 @@ udp_rx_callback(struct simple_udp_connection *c,
   LOG_INFO_("\n");
 
   char syn[] = "SYN";
-
   if(strcmp((char *)data,syn) == 0){
-	  *leaf_address = *sender_addr;
+	  *sink_addrs = *sender_addr;
     LOG_INFO_("Set leaf to sender: ");
-    LOG_INFO_6ADDR(leaf_address);
+    LOG_INFO_6ADDR(sink_addrs);
     LOG_INFO_("\n");
 	}else{
+    LOG_INFO("data = %.*s\n", datalen, (char *) data);
+    LOG_INFO("syn = %.*s\n", datalen, (char *) syn);
+    LOG_INFO_("Set rec_data to 1: \n");
     rec_data = 1;
   }
 }
@@ -87,16 +95,16 @@ PROCESS_THREAD(udp_server_process, ev, data)
 {
  // P5DIR |= 0x32;
  char req[] = "REQ";
- int i = 0;
  static struct etimer periodic_timer;
  uip_ipaddr_t zero_addr;
  uip_ip6addr(&zero_addr, 0, 0, 0, 0, 0, 0, 0, 0);
- leaf_address = (uip_ipaddr_t*) malloc(1 * sizeof(uip_ipaddr_t));
- uip_ip6addr(leaf_address, 0, 0, 0, 0, 0, 0, 0, 0);
- LOG_INFO_("Initial: ");
-  LOG_INFO_6ADDR(leaf_address);
-  LOG_INFO_("\n");
+
   PROCESS_BEGIN();
+ sink_addrs = (uip_ipaddr_t*) malloc(1 * sizeof(uip_ipaddr_t));
+ uip_ip6addr(sink_addrs, 0, 0, 0, 0, 0, 0, 0, 0);
+  LOG_INFO_("Initial: ");
+  LOG_INFO_6ADDR(sink_addrs);
+  LOG_INFO_("\n");
   lpm_on();
   /* Initialize DAG root */
   NETSTACK_ROUTING.root_start();
@@ -109,22 +117,22 @@ PROCESS_THREAD(udp_server_process, ev, data)
   while(1){
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&periodic_timer));
     LOG_INFO_("Before comparing to zero: ");
-    LOG_INFO_6ADDR(leaf_address);
+    LOG_INFO_6ADDR(sink_addrs);
     LOG_INFO_("\n");
-    if(!uip_ip6addr_cmp(leaf_address, &zero_addr)){
+    if(!uip_ipaddr_cmp(sink_addrs, &zero_addr)){
       for(i = 0; i < ATTEMPTS; i++){
         if(rec_data == 1) break;
         LOG_INFO("Sending '%.*s' to ", strlen(req), (char *) req);
-        LOG_INFO_6ADDR(leaf_address);
+        LOG_INFO_6ADDR(sink_addrs);
         LOG_INFO_("\n");
-        simple_udp_sendto(&udp_conn, (char *) req, strlen(req), leaf_address);
+        simple_udp_sendto(&udp_conn, (char *) req, strlen(req), sink_addrs);
         etimer_set(&periodic_timer, SEND_INTERVAL + (random_rand() % (5 * CLOCK_SECOND)));
         PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&periodic_timer));
       }
       if(rec_data == 0){
-        *leaf_address = zero_addr;
+        *sink_addrs = zero_addr;
         LOG_INFO_("Set leaf to zero: ");
-        LOG_INFO_6ADDR(leaf_address);
+        LOG_INFO_6ADDR(sink_addrs);
         LOG_INFO_("\n");
       }
       rec_data = 0;
