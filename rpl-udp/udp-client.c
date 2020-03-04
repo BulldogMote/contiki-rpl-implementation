@@ -49,6 +49,7 @@ udp_rx_callback(struct simple_udp_connection *c,
   snprintf(str, sizeof(str), "%u", get_temperature());
   simple_udp_sendto(&udp_conn, str, strlen(str), sender_addr);
   P5OUT |= (1<<5);
+  process_exit(&udp_client_sleep);
   process_start(&udp_client_sleep, NULL);
 
 #if LLSEC802154_CONF_ENABLED

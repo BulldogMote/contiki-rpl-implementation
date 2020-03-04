@@ -51,15 +51,42 @@
 
 static struct simple_udp_connection udp_conn;
 uip_ipaddr_t* sink_addrs;
-uint8_t sink_addrs_len;
-uint8_t rec_data = 0;
-uint8_t i;
+uint8_t sink_addrs_len = 0;
+uint16_t rec_data = 0;
+uint8_t a_i;
+uint8_t s_i;
 
 PROCESS(udp_server_process, "UDP server");
 AUTOSTART_PROCESSES(&udp_server_process);
 
-void add_sink(uip_ipaddr_t sink){
+void init_sinks(){
+  int j;
+  for(j = 0;j < 16;j++){
+    uip_ip6addr(&sink_addrs[j], 0, 0, 0, 0, 0, 0, 0, 0);
+  }
+}
 
+void add_sink(const uip_ipaddr_t* sink){
+  int j;
+  for(j = 0;j < sink_addrs_len;j++){
+    if(uip_ipaddr_cmp(&sink_addrs[j], sink)){
+      break;
+    }
+  }
+  if(j == sink_addrs_len){
+    sink_addrs[sink_addrs_len] = *sink;
+    sink_addrs_len++;
+  }
+}
+
+void set_rec_data(const uip_ipaddr_t* sink, uint8_t data){
+  int j;
+  for(j = 0;j < sink_addrs_len;j++){
+    if(uip_ipaddr_cmp(&sink_addrs[j], sink)){
+      rec_data &= ~(1<<j);
+      rec_data |= data << j;
+    }
+  }
 }
 
 /*---------------------------------------------------------------------------*/
@@ -79,15 +106,15 @@ udp_rx_callback(struct simple_udp_connection *c,
 
   char syn[] = "SYN";
   if(strcmp((char *)data,syn) == 0){
-	  *sink_addrs = *sender_addr;
-    LOG_INFO_("Set leaf to sender: ");
-    LOG_INFO_6ADDR(sink_addrs);
-    LOG_INFO_("\n");
+	  add_sink(sender_addr);
+    LOG_INFO("Add sender sink: ");
+    LOG_INFO_6ADDR(&sink_addrs[sink_addrs_len-1]);
+    LOG_INFO_("\n\n");
 	}else{
-    LOG_INFO("data = %.*s\n", datalen, (char *) data);
-    LOG_INFO("syn = %.*s\n", datalen, (char *) syn);
-    LOG_INFO_("Set rec_data to 1: \n");
-    rec_data = 1;
+    LOG_INFO("Set sink rec_data to 1: ");
+    LOG_INFO_6ADDR(sender_addr);
+    LOG_INFO_("\n\n");
+    set_rec_data(sender_addr, 1);
   }
 }
 /*---------------------------------------------------------------------------*/
@@ -100,11 +127,8 @@ PROCESS_THREAD(udp_server_process, ev, data)
  uip_ip6addr(&zero_addr, 0, 0, 0, 0, 0, 0, 0, 0);
 
   PROCESS_BEGIN();
- sink_addrs = (uip_ipaddr_t*) malloc(1 * sizeof(uip_ipaddr_t));
- uip_ip6addr(sink_addrs, 0, 0, 0, 0, 0, 0, 0, 0);
-  LOG_INFO_("Initial: ");
-  LOG_INFO_6ADDR(sink_addrs);
-  LOG_INFO_("\n");
+ sink_addrs = (uip_ipaddr_t*) malloc(16 * sizeof(uip_ipaddr_t));
+  init_sinks();
   lpm_on();
   /* Initialize DAG root */
   NETSTACK_ROUTING.root_start();
@@ -116,27 +140,25 @@ PROCESS_THREAD(udp_server_process, ev, data)
   etimer_set(&periodic_timer, random_rand() % SEND_INTERVAL);
   while(1){
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&periodic_timer));
-    LOG_INFO_("Before comparing to zero: ");
-    LOG_INFO_6ADDR(sink_addrs);
-    LOG_INFO_("\n");
-    if(!uip_ipaddr_cmp(sink_addrs, &zero_addr)){
-      for(i = 0; i < ATTEMPTS; i++){
-        if(rec_data == 1) break;
-        LOG_INFO("Sending '%.*s' to ", strlen(req), (char *) req);
-        LOG_INFO_6ADDR(sink_addrs);
-        LOG_INFO_("\n");
-        simple_udp_sendto(&udp_conn, (char *) req, strlen(req), sink_addrs);
-        etimer_set(&periodic_timer, SEND_INTERVAL + (random_rand() % (5 * CLOCK_SECOND)));
-        PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&periodic_timer));
+    for(s_i = 0; s_i < sink_addrs_len; s_i++){
+      if(!uip_ipaddr_cmp(&sink_addrs[s_i], &zero_addr)){
+        for(a_i = 0; a_i < ATTEMPTS; a_i++){
+          if((rec_data & (1<<s_i)) > 0) break;
+          LOG_INFO("Sending '%.*s' to ", strlen(req), (char *) req);
+          LOG_INFO_6ADDR(&sink_addrs[s_i]);
+          LOG_INFO_("\n");
+          simple_udp_sendto(&udp_conn, (char *) req, strlen(req), &sink_addrs[s_i]);
+          etimer_set(&periodic_timer, SEND_INTERVAL + (random_rand() % (5 * CLOCK_SECOND)));
+          PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&periodic_timer));
+        }
+        if((rec_data & (1<<s_i)) == 0){
+          LOG_INFO("Sink unresponsive: ");
+          LOG_INFO_6ADDR(&sink_addrs[s_i]);
+          LOG_INFO_("\n");
+        }
       }
-      if(rec_data == 0){
-        *sink_addrs = zero_addr;
-        LOG_INFO_("Set leaf to zero: ");
-        LOG_INFO_6ADDR(sink_addrs);
-        LOG_INFO_("\n");
-      }
-      rec_data = 0;
     }
+    rec_data = 0;
     etimer_set(&periodic_timer, 20 * CLOCK_SECOND  + (random_rand() % (1 * CLOCK_SECOND)));
   }
 
