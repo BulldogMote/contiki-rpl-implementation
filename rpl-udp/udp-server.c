@@ -49,12 +49,15 @@
 #define SEND_INTERVAL		  (1 * CLOCK_SECOND)
 #define ATTEMPTS 5
 
+enum p_type{SYN, DATA};
+
 static struct simple_udp_connection udp_conn;
 uip_ipaddr_t* sink_addrs;
 uint8_t sink_addrs_len = 0;
 uint16_t rec_data = 0;
 uint8_t a_i;
 uint8_t s_i;
+char syn[] = "SYN";
 
 PROCESS(udp_server_process, "UDP server");
 AUTOSTART_PROCESSES(&udp_server_process);
@@ -100,18 +103,13 @@ udp_rx_callback(struct simple_udp_connection *c,
          uint16_t datalen)
 { 
 
-  LOG_INFO("Received '%.*s' from ", datalen, (char *) data);
-  LOG_INFO_6ADDR(sender_addr);
-  LOG_INFO_("\n");
-
-  char syn[] = "SYN";
-  if(strcmp((char *)data,syn) == 0){
-	  add_sink(sender_addr);
-    LOG_INFO("Add sender sink: ");
-    LOG_INFO_6ADDR(&sink_addrs[sink_addrs_len-1]);
+  if(data[1] == SYN){
+    LOG_INFO("Received 'SYN' from ");
+    LOG_INFO_6ADDR(sender_addr);
     LOG_INFO_("\n\n");
+	  add_sink(sender_addr);
 	}else{
-    LOG_INFO("Set sink rec_data to 1: ");
+    LOG_INFO("Received DATA '%.*s' from ", (datalen), (char *) (data));
     LOG_INFO_6ADDR(sender_addr);
     LOG_INFO_("\n\n");
     set_rec_data(sender_addr, 1);
@@ -154,7 +152,7 @@ PROCESS_THREAD(udp_server_process, ev, data)
         if((rec_data & (1<<s_i)) == 0){
           LOG_INFO("Sink unresponsive: ");
           LOG_INFO_6ADDR(&sink_addrs[s_i]);
-          LOG_INFO_("\n");
+          LOG_INFO_("\n\n");
         }
       }
     }

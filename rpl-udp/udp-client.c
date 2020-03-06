@@ -9,6 +9,7 @@
 #include "sys/log.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include "dev/sht11/sht11-sensor.h"
 
 #define LOG_MODULE "App"
@@ -20,17 +21,29 @@
 
 #define SEND_INTERVAL		  (5 * CLOCK_SECOND)
 
+enum p_type{SYN, DATA};
+
 int get_temperature(){
   return ((sht11_sensor.value(SHT11_SENSOR_TEMP)/10)-396)/10;
 }
 
 static struct simple_udp_connection udp_conn;
+uint8_t p_data[32];
 
 /*---------------------------------------------------------------------------*/
 PROCESS(udp_client_process, "UDP client");
 PROCESS(udp_client_sleep, "UDP client data");
 AUTOSTART_PROCESSES(&udp_client_process);
 /*---------------------------------------------------------------------------*/
+
+static void encode_packet(uint8_t* dest, uint16_t datalen, uint8_t* data, enum p_type type){
+  int i;
+  (*dest) = type;
+  for(i = 0;i < datalen; i++){
+    dest[i+2] = data[i];
+  }
+}
+
 static void
 udp_rx_callback(struct simple_udp_connection *c,
          const uip_ipaddr_t *sender_addr,
@@ -82,8 +95,10 @@ PROCESS_THREAD(udp_client_process, ev, data)
       LOG_INFO("Sending SYN to ");
       LOG_INFO_6ADDR(&dest_ipaddr);
       LOG_INFO_("\n");
+
       snprintf(str, sizeof(str), "SYN");
-      simple_udp_sendto(&udp_conn, str, strlen(str), &dest_ipaddr);
+      encode_packet(p_data, 0, (uint8_t*)NULL, SYN);
+      simple_udp_sendto(&udp_conn, p_data, 2, &dest_ipaddr);
       P5OUT |= (1<<4);
       process_start(&udp_client_sleep, NULL);
       break;
@@ -106,6 +121,6 @@ PROCESS_THREAD(udp_client_sleep, ev, data)
   PROCESS_BEGIN();
     LOG_INFO("Going to sleep\n");
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&periodic_timer));
-    LPM_SLEEP();
+    LPM4;
   PROCESS_END();
 }
