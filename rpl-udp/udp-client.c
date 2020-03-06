@@ -100,6 +100,7 @@ PROCESS_THREAD(udp_client_process, ev, data)
       encode_packet(p_data, 0, (uint8_t*)NULL, SYN);
       simple_udp_sendto(&udp_conn, p_data, 2, &dest_ipaddr);
       P5OUT |= (1<<4);
+      process_exit(&udp_client_sleep);
       process_start(&udp_client_sleep, NULL);
       break;
     } else {
