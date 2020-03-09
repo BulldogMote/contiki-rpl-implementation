@@ -46,7 +46,7 @@
 #define UDP_CLIENT_PORT	8800	// 8765
 #define UDP_SERVER_PORT	5700	// 5678
 
-#define SEND_INTERVAL		  (1 * CLOCK_SECOND)
+#define SEND_INTERVAL		  (5 * CLOCK_SECOND)
 #define ATTEMPTS 5
 
 enum p_type{SYN, DATA};
@@ -101,7 +101,7 @@ udp_rx_callback(struct simple_udp_connection *c,
          uint16_t receiver_port,
          const uint8_t *data,
          uint16_t datalen)
-{ 
+{
 
   if(data[1] == SYN){
     LOG_INFO("Received 'SYN' from ");
