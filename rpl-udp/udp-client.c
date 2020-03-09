@@ -5,9 +5,8 @@
 #include "net/ipv6/simple-udp.h"
 #include <msp430.h>
 #include "dev/lpm.h"
-
+#include "dev/powertrace.h"
 #include "sys/log.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include "dev/sht11/sht11-sensor.h"
@@ -54,6 +53,7 @@ udp_rx_callback(struct simple_udp_connection *c,
          uint16_t datalen)
 {
   P5OUT &= ~(1<<5);
+  P5OUT |= (1<<4);
   static char str[32];
   LOG_INFO("Received '%.*s' from ", datalen, (char *) data);
   LOG_INFO_6ADDR(sender_addr);
@@ -61,7 +61,7 @@ udp_rx_callback(struct simple_udp_connection *c,
   LOG_INFO("Sending Temperature: %u\n", get_temperature());
   snprintf(str, sizeof(str), "%u", get_temperature());
   simple_udp_sendto(&udp_conn, str, strlen(str), sender_addr);
-  P5OUT |= (1<<5);
+
   process_exit(&udp_client_sleep);
   process_start(&udp_client_sleep, NULL);
 
@@ -81,6 +81,8 @@ PROCESS_THREAD(udp_client_process, ev, data)
 
   PROCESS_BEGIN();
 
+  P5OUT &= ~(1<<5);
+
   /* Initialize UDP connection */
   simple_udp_register(&udp_conn, UDP_CLIENT_PORT, NULL,
                       UDP_SERVER_PORT, udp_rx_callback);
@@ -90,7 +92,6 @@ PROCESS_THREAD(udp_client_process, ev, data)
   while(1) {
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&periodic_timer));
     if(NETSTACK_ROUTING.node_is_reachable() && NETSTACK_ROUTING.get_root_ipaddr(&dest_ipaddr)) {
-      P5OUT &= ~(1<<4);
       /* Send to DAG root */
       LOG_INFO("Sending SYN to ");
       LOG_INFO_6ADDR(&dest_ipaddr);
@@ -99,7 +100,6 @@ PROCESS_THREAD(udp_client_process, ev, data)
       snprintf(str, sizeof(str), "SYN");
       encode_packet(p_data, 0, (uint8_t*)NULL, SYN);
       simple_udp_sendto(&udp_conn, p_data, 2, &dest_ipaddr);
-      P5OUT |= (1<<4);
       process_exit(&udp_client_sleep);
       process_start(&udp_client_sleep, NULL);
       break;
@@ -121,7 +121,12 @@ PROCESS_THREAD(udp_client_sleep, ev, data)
   etimer_set(&periodic_timer, 5 * CLOCK_SECOND);
   PROCESS_BEGIN();
     LOG_INFO("Going to sleep\n");
+  //  LOG_INFO("Staying up late!\n");
+  // LOG_INFO("Ticks per second: %u\n", RTIMER_SECOND);
+  //  powertrace_start(CLOCK_SECOND * 10);
+  P5OUT &= ~(1<<4);
+  P5OUT |= (1<<5);
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&periodic_timer));
-    LPM4;
+//    LPM4; //Comment out to stay awake
   PROCESS_END();
 }
